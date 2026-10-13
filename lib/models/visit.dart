@@ -24,7 +24,9 @@ class DocumentItem {
     type: json['type']?.toString() ?? 'document',
     mimeType: json['mimeType']?.toString() ?? 'application/octet-stream',
     size: (json['size'] as num?)?.toInt() ?? 0,
-    createdAt: json['createdAt'] == null ? null : DateTime.tryParse(json['createdAt'].toString()),
+    createdAt: json['createdAt'] == null
+        ? null
+        : DateTime.tryParse(json['createdAt'].toString()),
   );
 }
 
@@ -41,7 +43,8 @@ class FactoryLocation {
     this.status = 'pendente',
     Map<String, String>? answers,
     List<DocumentItem>? documents,
-  }) : answers = answers ?? {}, documents = documents ?? [];
+  }) : answers = answers ?? {},
+       documents = documents ?? [];
 
   factory FactoryLocation.fromJson(Map<String, dynamic> json) {
     final rawAnswers = json['answers'];
@@ -52,7 +55,13 @@ class FactoryLocation {
       status: json['status']?.toString() ?? 'pendente',
       answers: answersJson.map((k, v) => MapEntry(k.toString(), v.toString())),
       documents: (json['documents'] is List)
-          ? (json['documents'] as List).map((e) => DocumentItem.fromJson(Map<String, dynamic>.from(e as Map))).toList()
+          ? (json['documents'] as List)
+                .map(
+                  (e) => DocumentItem.fromJson(
+                    Map<String, dynamic>.from(e as Map),
+                  ),
+                )
+                .toList()
           : [],
     );
   }
@@ -91,7 +100,13 @@ class Visit {
     factoryContact: json['factoryContact']?.toString() ?? '',
     status: json['status']?.toString() ?? 'agendada',
     locations: (json['locations'] is List)
-        ? (json['locations'] as List).map((e) => FactoryLocation.fromJson(Map<String, dynamic>.from(e as Map))).toList()
+        ? (json['locations'] as List)
+              .map(
+                (e) => FactoryLocation.fromJson(
+                  Map<String, dynamic>.from(e as Map),
+                ),
+              )
+              .toList()
         : [],
   );
 
@@ -101,5 +116,6 @@ class Visit {
     'factoryContact': factoryContact,
   };
 
-  bool get allLocationsDone => locations.isNotEmpty && locations.every((l) => l.status == 'concluido');
+  bool get allLocationsDone =>
+      locations.isNotEmpty && locations.every((l) => l.status == 'concluido');
 }

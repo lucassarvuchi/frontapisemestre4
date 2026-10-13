@@ -29,7 +29,7 @@ class LocationCard extends StatelessWidget {
         title: Text(location.name),
         subtitle: Text(
           '${location.documents.length} anexo(s) • '
-              '${location.answers.length} questão(ões) respondida(s)',
+          '${location.answers.length} questão(ões) respondida(s)',
         ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
