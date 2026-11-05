@@ -19,12 +19,12 @@ class LocationFormScreen extends StatefulWidget {
   State<LocationFormScreen> createState() => _LocationFormScreenState();
 }
 
-class _LocationFormScreenState extends State<LocationFormScreen>
-    with SingleTickerProviderStateMixin {
+class _LocationFormScreenState extends State<LocationFormScreen> {
   late FactoryLocation _loc;
-  late TabController _tabs;
   final Map<String, String> _answers = {};
-  bool _saving = false, _uploading = false;
+  bool _saving = false;
+  bool _uploading = false;
+  int _selectedIndex = 0;
   final _picker = ImagePicker();
 
   @override
@@ -32,28 +32,31 @@ class _LocationFormScreenState extends State<LocationFormScreen>
     super.initState();
     _loc = widget.location;
     _answers.addAll(_loc.answers);
-    _tabs = TabController(length: 2, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabs.dispose();
-    super.dispose();
   }
 
   Future<void> _save() async {
     setState(() => _saving = true);
-    final all = formQuestions.every((q) => _answers[q.id]?.isNotEmpty == true);
+
+    final allQuestions = [...formQuestions, ...structureQuestions];
+    final allAnswered = allQuestions.every(
+          (question) => _answers[question.id]?.isNotEmpty == true,
+    );
+
     _loc.answers = Map<String, String>.from(_answers);
-    _loc.status = all ? 'concluido' : 'pendente';
+    _loc.status = allAnswered ? 'concluido' : 'pendente';
+
     try {
       _loc = await ApiService.updateLocation(widget.visitId, _loc);
       if (!mounted) return;
       Navigator.pop(context, _loc);
     } catch (e) {
-      if (mounted) _snack(e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        _snack(e.toString().replaceFirst('Exception: ', ''));
+      }
     } finally {
-      if (mounted) setState(() => _saving = false);
+      if (mounted) {
+        setState(() => _saving = false);
+      }
     }
   }
 
@@ -62,17 +65,24 @@ class _LocationFormScreenState extends State<LocationFormScreen>
       source: camera ? ImageSource.camera : ImageSource.gallery,
       imageQuality: 85,
     );
-    if (img != null) await _upload(img.path, 'photo');
+
+    if (img != null) {
+      await _upload(img.path, 'photo');
+    }
   }
 
   Future<void> _pickDocument() async {
     final result = await FilePicker.platform.pickFiles(withData: false);
-    if (result?.files.single.path != null)
-      await _upload(result!.files.single.path!, 'document');
+    final path = result?.files.single.path;
+
+    if (path != null) {
+      await _upload(path, 'document');
+    }
   }
 
   Future<void> _upload(String path, String type) async {
     setState(() => _uploading = true);
+
     try {
       final doc = await ApiService.uploadDocument(
         widget.visitId,
@@ -80,150 +90,239 @@ class _LocationFormScreenState extends State<LocationFormScreen>
         path,
         type,
       );
+
+      if (!mounted) return;
       setState(() => _loc.documents.add(doc));
       _snack('Anexo salvo no MongoDB.');
     } catch (e) {
-      _snack(e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        _snack(e.toString().replaceFirst('Exception: ', ''));
+      }
     } finally {
-      if (mounted) setState(() => _uploading = false);
+      if (mounted) {
+        setState(() => _uploading = false);
+      }
     }
   }
 
   Future<void> _deleteDoc(DocumentItem doc) async {
     try {
       await ApiService.deleteDocument(widget.visitId, _loc.id, doc.id);
-      setState(() => _loc.documents.removeWhere((d) => d.id == doc.id));
+      if (!mounted) return;
+      setState(() {
+        _loc.documents.removeWhere((item) => item.id == doc.id);
+      });
     } catch (e) {
-      _snack(e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        _snack(e.toString().replaceFirst('Exception: ', ''));
+      }
     }
   }
 
-  void _snack(String s) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s)));
+  void _snack(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(_loc.name),
-      bottom: TabBar(
-        controller: _tabs,
-        tabs: const [
-          Tab(icon: Icon(Icons.assignment), text: 'Formulário'),
-          Tab(icon: Icon(Icons.attach_file), text: 'Anexos'),
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(_loc.name)),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          _questionList(formQuestions),
+          _structures(),
+          _attachments(),
         ],
       ),
-    ),
-    body: TabBarView(controller: _tabs, children: [_form(), _attachments()]),
-    bottomNavigationBar: SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: ElevatedButton(
-          onPressed: _saving || _uploading ? null : _save,
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 16),
-          ),
-          child: _saving
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Text('Salvar formulário'),
-        ),
-      ),
-    ),
-  );
-
-  Widget _form() => ListView(
-    padding: const EdgeInsets.all(16),
-    children: [
-      ...formQuestions.asMap().entries.map((entry) {
-        final i = entry.key, q = entry.value;
-        return Card(
-          margin: const EdgeInsets.only(bottom: 16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${i + 1}. ${q.text}',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                ...q.options.map(
-                  (opt) => RadioListTile<String>(
-                    title: Text(opt),
-                    value: opt,
-                    groupValue: _answers[q.id],
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    onChanged: (v) {
-                      if (v != null) setState(() => _answers[q.id] = v);
-                    },
+      bottomNavigationBar: SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: _saving || _uploading ? null : _save,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
                   ),
+                  child: _saving
+                      ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                      : const Text('Salvar formulário'),
+                ),
+              ),
+            ),
+            BottomNavigationBar(
+              currentIndex: _selectedIndex,
+              onTap: (index) => setState(() => _selectedIndex = index),
+              type: BottomNavigationBarType.fixed,
+              items: const [
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.assignment),
+                  label: 'Formulário',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.domain),
+                  label: 'Estruturas',
+                ),
+                BottomNavigationBarItem(
+                  icon: Icon(Icons.attach_file),
+                  label: 'Anexos',
                 ),
               ],
-            ),
-          ),
-        );
-      }),
-    ],
-  );
-
-  Widget _attachments() => Column(
-    children: [
-      Padding(
-        padding: const EdgeInsets.all(16),
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: _uploading ? null : () => _pickPhoto(camera: true),
-              icon: const Icon(Icons.photo_camera),
-              label: const Text('Câmera'),
-            ),
-            OutlinedButton.icon(
-              onPressed: _uploading ? null : () => _pickPhoto(),
-              icon: const Icon(Icons.photo),
-              label: const Text('Galeria'),
-            ),
-            OutlinedButton.icon(
-              onPressed: _uploading ? null : _pickDocument,
-              icon: const Icon(Icons.upload_file),
-              label: const Text('Documento'),
             ),
           ],
         ),
       ),
-      if (_uploading) const LinearProgressIndicator(),
-      Expanded(
-        child: _loc.documents.isEmpty
-            ? const Center(child: Text('Nenhum anexo adicionado'))
-            : ListView.builder(
-                itemCount: _loc.documents.length,
-                itemBuilder: (_, i) {
-                  final d = _loc.documents[i];
-                  return ListTile(
-                    leading: Icon(
-                      d.type == 'photo' ? Icons.photo : Icons.description,
-                      color: Colors.blue,
-                    ),
-                    title: Text(
-                      d.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    subtitle: Text(d.type == 'photo' ? 'Foto' : 'Documento'),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      onPressed: () => _deleteDoc(d),
-                    ),
-                  );
+    );
+  }
+
+  Widget _structures() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        ...structureQuestions.asMap().entries.map((entry) {
+          final index = entry.key;
+          final question = entry.value;
+          return _questionCard(index + 1, question);
+        }),
+        Card(
+          margin: const EdgeInsets.only(bottom: 16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: TextFormField(
+              initialValue: _answers[structureCommentsId] ?? '',
+              minLines: 3,
+              maxLines: 5,
+              decoration: const InputDecoration(
+                labelText: 'Comentários sobre estruturas',
+                alignLabelWithHint: true,
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (value) {
+                _answers[structureCommentsId] = value;
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _questionList(List<Question> questions) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        ...questions.asMap().entries.map((entry) {
+          final index = entry.key;
+          final question = entry.value;
+          return _questionCard(index + 1, question);
+        }),
+      ],
+    );
+  }
+
+  Widget _questionCard(int number, Question question) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$number. ${question.text}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            ...question.options.map(
+                  (option) => RadioListTile<String>(
+                title: Text(option),
+                value: option,
+                groupValue: _answers[question.id],
+                dense: true,
+                contentPadding: EdgeInsets.zero,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _answers[question.id] = value);
+                  }
                 },
               ),
+            ),
+          ],
+        ),
       ),
-    ],
-  );
+    );
+  }
+
+  Widget _attachments() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _uploading ? null : () => _pickPhoto(camera: true),
+                icon: const Icon(Icons.photo_camera),
+                label: const Text('Câmera'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _uploading ? null : () => _pickPhoto(),
+                icon: const Icon(Icons.photo),
+                label: const Text('Galeria'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _uploading ? null : _pickDocument,
+                icon: const Icon(Icons.upload_file),
+                label: const Text('Documento'),
+              ),
+            ],
+          ),
+        ),
+        if (_uploading) const LinearProgressIndicator(),
+        Expanded(
+          child: _loc.documents.isEmpty
+              ? const Center(child: Text('Nenhum anexo adicionado'))
+              : ListView.builder(
+            itemCount: _loc.documents.length,
+            itemBuilder: (_, index) {
+              final document = _loc.documents[index];
+
+              return ListTile(
+                leading: Icon(
+                  document.type == 'photo'
+                      ? Icons.photo
+                      : Icons.description,
+                  color: Colors.blue,
+                ),
+                title: Text(
+                  document.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(
+                  document.type == 'photo' ? 'Foto' : 'Documento',
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => _deleteDoc(document),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
 }

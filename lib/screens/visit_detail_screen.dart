@@ -86,13 +86,20 @@ class _VisitDetailScreenState extends State<VisitDetailScreen> {
       await _saveVisit();
       if (_visit.id.isEmpty) return;
     }
+
     final name = await _promptLocationName();
     if (name == null || name.isEmpty) return;
+
     try {
       final loc = await ApiService.addLocation(_visit.id, name);
+      loc.name = name;
+
+      if (!mounted) return;
       setState(() => _visit.locations.add(loc));
     } catch (e) {
-      _snack(e.toString().replaceFirst('Exception: ', ''));
+      if (mounted) {
+        _snack(e.toString().replaceFirst('Exception: ', ''));
+      }
     }
   }
 
